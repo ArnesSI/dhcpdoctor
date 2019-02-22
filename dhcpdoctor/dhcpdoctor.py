@@ -66,13 +66,48 @@ def sniffer(dhcp_client):
     )
 
 
-class DHCPv4:
+class DHCPClient:
     def __init__(self):
         self.xid = 1
         self.request = None
         self.reply = None
         self.sniffer = None
 
+    def craft_request(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def craft_discover(self, hw=None):
+        raise NotImplementedError
+
+    def add_relay(self, p, srv_ip, relay_ip=None):
+        raise NotImplementedError
+
+    def send(self):
+        if settings.RELAY_MODE:
+            # sending unicast, let scapy handle ethernet
+            send(self.request, verbose=settings.DEBUG)
+        else:
+            # sending broadcast, need to set Ethernet ourselves
+            # FIXME IPv6 needs multicast MAC
+            sendp(Ether(dst="FF:FF:FF:FF:FF:FF") / self.request, verbose=settings.DEBUG)
+
+    def sniff_start(self):
+        """Starts listening for packets in a new thread"""
+        self.sniffer = threading.Thread(target=sniffer, args=[self])
+        self.sniffer.start()
+
+    def sniff_stop(self):
+        """Waits for sniffer thread to finish"""
+        self.sniffer.join()
+
+    def is_matching_reply(self, reply):
+        raise NotImplementedError
+
+    def is_offer_type(self, packet):
+        raise NotImplementedError
+
+
+class DHCPv4Client(DHCPClient):
     def craft_request(self, *args, **kwargs):
         self.request = self.craft_discover(*args, **kwargs)
         if settings.RELAY_MODE:
@@ -124,23 +159,6 @@ class DHCPv4:
         p[IP].src = relay_ip
         p[IP].dst = srv_ip
 
-    def send(self):
-        if settings.RELAY_MODE:
-            # sending unicast, let scapy handle ethernet
-            send(self.request, verbose=settings.DEBUG)
-        else:
-            # sending broadcast, need to set Ethernet ourselves
-            sendp(Ether(dst="FF:FF:FF:FF:FF:FF") / self.request, verbose=settings.DEBUG)
-
-    def sniff_start(self):
-        """Starts listening for packets in a new thread"""
-        self.sniffer = threading.Thread(target=sniffer, args=[self])
-        self.sniffer.start()
-
-    def sniff_stop(self):
-        """Waits for sniffer thread to finish"""
-        self.sniffer.join()
-
     def is_matching_reply(self, reply):
         """Check that received packet is a response to a request sent by this instance
 
@@ -188,9 +206,12 @@ def run_test():
     # configure default scapy interface
     conf.iface = settings.IFACE or conf.iface
 
-    dhcp_client = DHCPv4()
-    p = dhcp_client.craft_request()
+    if settings.PROTOCOL == 4:
+        dhcp_client = DHCPv4Client()
+    elif settings.PROTOCOL == 6:
+        dhcp_client = DHCPv4Client()
 
+    dhcp_client.craft_request()
     dhcp_client.sniff_start()
     dhcp_client.send()
     dhcp_client.sniff_stop()
@@ -216,11 +237,18 @@ def parse_cmd_args():
     parser.add_argument(
         '-V', '--version', action='version', version='%(prog)s {}'.format(__version__)
     )
-    parser.add_argument('-d', dest='debug', action='store_true', help='debugging mode')
+    parser.add_argument('-d', dest='DEBUG', action='store_true', help='debugging mode')
+    proto_group = parser.add_mutually_exclusive_group()
+    proto_group.add_argument(
+        '-4', dest='PROTOCOL', action='store_const', const=4, help='IPv4 mode'
+    )
+    proto_group.add_argument(
+        '-6', dest='PROTOCOL', action='store_const', const=6, help='IPv6 mode'
+    )
     parser.add_argument(
         '-i',
         '--interface',
-        dest='iface',
+        dest='IFACE',
         type=str,
         required=False,
         help='interface to send requests via',
@@ -228,7 +256,7 @@ def parse_cmd_args():
     parser.add_argument(
         '-r',
         '--relay',
-        dest='relay_dst',
+        dest='SERVER_ADDRESS',
         type=str,
         required=False,
         help='send requests to specified server instead of broadcasting them on the local network',
@@ -236,28 +264,29 @@ def parse_cmd_args():
     parser.add_argument(
         '-f',
         '--relay-from',
-        dest='relay_src',
+        dest='RELAY_FROM',
         type=str,
         required=False,
         help='send relayed requests from specified address. Defaults to address of the interface requests are sent from.',
     )
     parser.add_argument(
-        '--timeput',
-        dest='timeout',
+        '--timeout',
+        dest='TIMEOUT',
         type=int,
         required=False,
         help='Time to wait for response from server before giving up.',
-        default=settings.TIMEOUT,
     )
+    parser.set_defaults(PROTOCOL=settings.PROTOCOL, TIMEOUT=settings.TIMEOUT)
     args = parser.parse_args()
-    settings.DEBUG = args.debug
-    settings.IFACE = args.iface
-    settings.TIMEOUT = args.timeout
-    if args.relay_dst:
+    settings.DEBUG = args.DEBUG
+    settings.IFACE = args.IFACE
+    settings.TIMEOUT = args.TIMEOUT
+    settings.PROTOCOL = args.PROTOCOL
+    if args.SERVER_ADDRESS:
         settings.RELAY_MODE = True
-        settings.SERVER_ADDRESS = args.relay_dst
-        if args.relay_src:
-            settings.RELAY_ADDRESS = args.relay_from
+        settings.SERVER_ADDRESS = args.SERVER_ADDRESS
+        if args.RELAY_ADDRESS:
+            settings.RELAY_ADDRESS = args.RELAY_ADDRESS
 
 
 def main():
