@@ -8,7 +8,7 @@ Vagrant.configure("2") do |config|
     dhcpd4.vm.network "private_network", ip: "10.2.3.13"
     dhcpd4.vm.provision "shell", inline: <<-SHELL
       sudo yum install -y dhcp tcpdump
-      sudo cp -v /vagrant/docker/dhcpd/dhcpd.conf /etc/dhcp/dhcpd.conf
+      sudo cp -v /vagrant/tests/dhcpd/dhcpd.conf /etc/dhcp/dhcpd.conf
       sudo systemctl start dhcpd
     SHELL
   end
