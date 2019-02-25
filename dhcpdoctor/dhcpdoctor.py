@@ -414,6 +414,9 @@ def parse_cmd_args():
         CLIENT_ID=settings.CLIENT_ID,
     )
     args = parser.parse_args()
+    # argument validation
+    if args.RELAY_ADDRESS and not args.SERVER_ADDRESS:
+        parser.error('The --relay-from [-f] argument can only be used with --relay [-r] argument.')
     settings.DEBUG = args.DEBUG
     settings.IFACE = args.IFACE
     settings.CLIENT_ID = args.CLIENT_ID
