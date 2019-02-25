@@ -2,17 +2,30 @@ import argparse
 import binascii
 import sys
 import threading
+from random import randint
 
 import scapy
 from scapy.all import (
     BOOTP,
     DHCP,
+    DHCP6,
+    DUID_LL,
     IP,
     UDP,
     AnsweringMachine,
+    DHCP6_RelayForward,
+    DHCP6_Reply,
+    DHCP6_Solicit,
+    DHCP6_Advertise,
+    DHCP6OptClientId,
+    DHCP6OptElapsedTime,
+    DHCP6OptIA_NA,
+    DHCP6OptRelayMsg,
     Ether,
+    IPv6,
     conf,
     get_if_addr,
+    get_if_addr6,
     get_if_hwaddr,
     get_if_raw_hwaddr,
     send,
@@ -68,13 +81,20 @@ def sniffer(dhcp_client):
 
 class DHCPClient:
     def __init__(self):
-        self.xid = 1
+        self.xid = randint(0, (2 ** 24) - 1)  # BOOTP 4 bytes, DHCPv6 3 bytes
         self.request = None
         self.reply = None
         self.sniffer = None
 
     def craft_request(self, *args, **kwargs):
-        raise NotImplementedError
+        self.request = self.craft_discover(*args, **kwargs)
+        if settings.RELAY_MODE:
+            self.add_relay(
+                self.request, settings.SERVER_ADDRESS, settings.RELAY_ADDRESS
+            )
+        if settings.DEBUG:
+            print(self.request.show())
+        return self.request
 
     def craft_discover(self, hw=None):
         raise NotImplementedError
@@ -87,9 +107,10 @@ class DHCPClient:
             # sending unicast, let scapy handle ethernet
             send(self.request, verbose=settings.DEBUG)
         else:
-            # sending broadcast, need to set Ethernet ourselves
-            # FIXME IPv6 needs multicast MAC
-            sendp(Ether(dst="FF:FF:FF:FF:FF:FF") / self.request, verbose=settings.DEBUG)
+            # sending to local link, need to set Ethernet ourselves
+            sendp(
+                Ether(dst=self._get_ether_dst()) / self.request, verbose=settings.DEBUG
+            )
 
     def sniff_start(self):
         """Starts listening for packets in a new thread"""
@@ -101,27 +122,39 @@ class DHCPClient:
         self.sniffer.join()
 
     def is_matching_reply(self, reply):
-        raise NotImplementedError
+        """Checks that we got reply packet
+
+        Called for each packet captured by sniffer.
+        
+        Args:
+            reply (scapy.packet.Packet): Packet received by sniffer
+        
+        Returns:
+            bool: True if packet matches
+        """
+        if self.is_offer_type(reply):
+            self.reply = reply
+            if settings.DEBUG:
+                print(reply.show())
+            return True
+        return False
 
     def is_offer_type(self, packet):
         raise NotImplementedError
 
+    def _get_ether_dst(self):
+        raise NotImplementedError
+
 
 class DHCPv4Client(DHCPClient):
-    def craft_request(self, *args, **kwargs):
-        self.request = self.craft_discover(*args, **kwargs)
-        if settings.RELAY_MODE:
-            self.add_relay(
-                self.request, settings.SERVER_ADDRESS, settings.RELAY_ADDRESS
-            )
-        return self.request
+    MAC_BROADCAST = 'FF:FF:FF:FF:FF:FF'
 
     def craft_discover(self, hw=None):
         """Generates a DHCPDICSOVER packet
         
         Args:
-            hw (str|bytes, optional): Defaults to None. Client MAC address to place
-                in `chaddr`.
+            hw (str|bytes, optional): Defaults to MAC of Scapy's `conf.iface`.
+                Client MAC address to place in `chaddr`.
         
         Returns:
             scapy.layers.inet.IP: DHCPDISCOVER packet
@@ -138,10 +171,12 @@ class DHCPv4Client(DHCPClient):
             / DHCP(options=[("message-type", "discover"), "end"])
         )
         # TODO: param req list
+        if settings.DEBUG:
+            print(dhcp_discover.show())
         return dhcp_discover
 
     def add_relay(self, p, srv_ip, relay_ip=None):
-        """Modify passed DHCP cient packet as if a DHCP relay would
+        """Modify passed DHCP client packet as if a DHCP relay would
         
         Add giaddr, update UDP src port and set IP dest address.
         
@@ -158,33 +193,16 @@ class DHCPv4Client(DHCPClient):
         p[UDP].sport = 67
         p[IP].src = relay_ip
         p[IP].dst = srv_ip
-
-    def is_matching_reply(self, reply):
-        """Check that received packet is a response to a request sent by this instance
-
-        A bootp transaction ID must match.
-        
-        Args:
-            reply (scapy.packet.Packet): Packet received by sniffer
-        
-        Returns:
-            bool: True if packet matches
-        """
-        if (
-            reply.haslayer(BOOTP)
-            and reply[BOOTP].op == 2
-            and reply[BOOTP].xid == self.xid
-            and reply.haslayer(DHCP)
-            and self.is_offer_type(reply)
-        ):
-            self.reply = reply
-            return True
-        return False
+        if settings.DEBUG:
+            print(p.show())
 
     def is_offer_type(self, packet):
-        """Checks that packet contains DHCP message-type that offers an  address
+        """Checks that packet is a valid DHCP reply
         
-        Packet must be a DHCPOFFER (2)
+        The following are checked:
+        * packet contains BOOTP and DHCP layers
+        * BOOTP xid matches request
+        * DHCP message-type must be a DHCPOFFER (2) (others can be added later)
         
         Args:
             reply (scapy.packet.Packet): Packet to check
@@ -192,12 +210,109 @@ class DHCPv4Client(DHCPClient):
         Returns:
             bool: True if packet matches
         """
+        if not packet.haslayer(BOOTP):
+            return False
+        if packet[BOOTP].op != 2:
+            return False
+        if packet[BOOTP].xid != self.xid:
+            return False
         if not packet.haslayer(DHCP):
             return False
         req_type = [x[1] for x in packet[DHCP].options if x[0] == 'message-type'][0]
         if req_type in [2]:
             return True
         return False
+
+    def _get_ether_dst(self):
+        return self.MAC_BROADCAST
+
+
+class DHCPv6Client(DHCPClient):
+    MAC_MCAST = '33:33:00:00:00:02'
+
+    def craft_discover(self, hw=None):
+        """Generates a DHCPv6 Solicit packet
+        
+        Args:
+            hw (str|bytes, optional): Defaults to MAC of Scapy's `conf.iface`.
+                Client MAC address to use for DUID LL.
+        
+        Returns:
+            scapy.layers.inet.IPv6: DHCPv6 Solicit packet
+        """
+        if not hw:
+            _, hw = get_if_raw_hwaddr(conf.iface)
+        else:
+            hw = mac_str_to_bytes(hw)
+
+        dhcp_solicit = (
+            IPv6(dst="ff02::1:2")
+            / UDP(sport=546, dport=547)
+            / DHCP6_Solicit(trid=self.xid)
+            / DHCP6OptElapsedTime()
+            / DHCP6OptClientId(duid=DUID_LL(lladdr=hw))
+            / DHCP6OptIA_NA(iaid=0)
+        )
+        if settings.DEBUG:
+            print(dhcp_solicit.show())
+        return dhcp_solicit
+
+    def add_relay(self, p, srv_ip, relay_ip=None):
+        """Modify passed DHCP client packet as if a DHCP relay would
+        
+        Encapsulate DHCPv6 request message into DHCPv6 RelayForward, update UDP
+            src port and set IP dest address.
+        
+        Args:
+            p (scapy.packet.Packet): DHCP client packet
+            srv_ip (str): IPv6 address of server to relay to
+            relay_ip (str, optional): Defaults to dhcpdoctor's IPv6. IPv6 address
+                of relay.
+        """
+        if not relay_ip:
+            relay_ip = get_if_addr6(conf.iface)
+
+        # get payload of UDP to get whatever type of DHCPv6 request it is and
+        # replace it with our relay data
+        dhcp_request = p[UDP].payload
+        assert isinstance(dhcp_request, DHCP6)
+        p[UDP].remove_payload()
+        p[UDP].add_payload(
+            DHCP6_RelayForward(linkaddr=relay_ip, peeraddr=p[IPv6].src)
+            / DHCP6OptRelayMsg(message=dhcp_request)
+        )
+
+        p[UDP].sport = 547
+        p[IPv6].src = relay_ip
+        p[IPv6].dst = srv_ip
+        if settings.DEBUG:
+            print(p.show())
+
+    def is_offer_type(self, packet):
+        """Checks that a packet is a valid DHCPv6 reply
+        
+        The following are checked:
+        * packet contains DHCPv6 Advertise or Reply
+        * Transaction ID matches request
+        * packet contains IA_NA option
+        
+        Args:
+            packet (scapy.packet.Packet): Packet to check
+        
+        Returns:
+            bool: True if packet matches
+        """
+
+        if not (packet.haslayer(DHCP6_Advertise) or packet.haslayer(DHCP6_Reply)):
+            return False
+        if packet[DHCP6_Advertise].trid != self.xid:
+            return False
+        if not packet.haslayer(DHCP6OptIA_NA):
+            return False
+        return True
+
+    def _get_ether_dst(self):
+        return self.MAC_MCAST
 
 
 def run_test():
@@ -209,9 +324,9 @@ def run_test():
     if settings.PROTOCOL == 4:
         dhcp_client = DHCPv4Client()
     elif settings.PROTOCOL == 6:
-        dhcp_client = DHCPv4Client()
+        dhcp_client = DHCPv6Client()
 
-    dhcp_client.craft_request()
+    dhcp_client.craft_request(hw=settings.CLIENT_ID)
     dhcp_client.sniff_start()
     dhcp_client.send()
     dhcp_client.sniff_stop()
@@ -254,6 +369,14 @@ def parse_cmd_args():
         help='interface to send requests via',
     )
     parser.add_argument(
+        '-c',
+        '--client-id',
+        dest='CLIENT_ID',
+        type=str,
+        required=False,
+        help='MAC address or DUID of client to send in request. Defaults to MAC address of interface requests are sent from.',
+    )
+    parser.add_argument(
         '-r',
         '--relay',
         dest='SERVER_ADDRESS',
@@ -264,7 +387,7 @@ def parse_cmd_args():
     parser.add_argument(
         '-f',
         '--relay-from',
-        dest='RELAY_FROM',
+        dest='RELAY_ADDRESS',
         type=str,
         required=False,
         help='send relayed requests from specified address. Defaults to address of the interface requests are sent from.',
@@ -276,10 +399,15 @@ def parse_cmd_args():
         required=False,
         help='Time to wait for response from server before giving up.',
     )
-    parser.set_defaults(PROTOCOL=settings.PROTOCOL, TIMEOUT=settings.TIMEOUT)
+    parser.set_defaults(
+        PROTOCOL=settings.PROTOCOL,
+        TIMEOUT=settings.TIMEOUT,
+        CLIENT_ID=settings.CLIENT_ID,
+    )
     args = parser.parse_args()
     settings.DEBUG = args.DEBUG
     settings.IFACE = args.IFACE
+    settings.CLIENT_ID = args.CLIENT_ID
     settings.TIMEOUT = args.TIMEOUT
     settings.PROTOCOL = args.PROTOCOL
     if args.SERVER_ADDRESS:

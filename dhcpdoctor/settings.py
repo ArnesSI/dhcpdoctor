@@ -7,6 +7,12 @@ IFACE = None
 Should be a string matching interface name. If not set, conf.iface from scapy is used.
 """
 
+CLIENT_ID = None
+"""str: MAC address or DUID LL of client to send in request.
+
+If not set the MAC address of conf.iface from scapy is used.',
+"""
+
 PROTOCOL = 4
 """int: DHCP protocol to operate in.
 
