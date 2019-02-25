@@ -4,7 +4,6 @@ import sys
 import threading
 from random import randint
 
-import scapy
 from scapy.all import (
     BOOTP,
     DHCP,
@@ -13,13 +12,14 @@ from scapy.all import (
     IP,
     UDP,
     AnsweringMachine,
+    DHCP6_Advertise,
     DHCP6_RelayForward,
     DHCP6_Reply,
     DHCP6_Solicit,
-    DHCP6_Advertise,
     DHCP6OptClientId,
     DHCP6OptElapsedTime,
     DHCP6OptIA_NA,
+    DHCP6OptIAAddress,
     DHCP6OptRelayMsg,
     Ether,
     IPv6,
@@ -85,6 +85,7 @@ class DHCPClient:
         self.request = None
         self.reply = None
         self.sniffer = None
+        self.offered_address = None
 
     def craft_request(self, *args, **kwargs):
         self.request = self.craft_discover(*args, **kwargs)
@@ -136,10 +137,14 @@ class DHCPClient:
             self.reply = reply
             if settings.DEBUG:
                 print(reply.show())
+            self.offered_address = self.get_offered_address()
             return True
         return False
 
     def is_offer_type(self, packet):
+        raise NotImplementedError
+
+    def get_offered_address(self):
         raise NotImplementedError
 
     def _get_ether_dst(self):
@@ -222,6 +227,9 @@ class DHCPv4Client(DHCPClient):
         if req_type in [2]:
             return True
         return False
+
+    def get_offered_address(self):
+        return self.reply[BOOTP].yiaddr
 
     def _get_ether_dst(self):
         return self.MAC_BROADCAST
@@ -311,6 +319,9 @@ class DHCPv6Client(DHCPClient):
             return False
         return True
 
+    def get_offered_address(self):
+        return self.reply[DHCP6OptIAAddress].addr
+
     def _get_ether_dst(self):
         return self.MAC_MCAST
 
@@ -331,10 +342,8 @@ def run_test():
     dhcp_client.send()
     dhcp_client.sniff_stop()
 
-    r = dhcp_client.reply
-
-    if r:
-        print('got reply!')
+    if dhcp_client.reply:
+        print('got reply with address {}'.format(dhcp_client.offered_address))
         sys.exit(0)
     else:
         print('NO REPLY FOUND!!!')
