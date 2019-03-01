@@ -23,4 +23,22 @@ of the interface to send request from is used.
 
 You can specify the interface to send requests from with `-i`.
 
-Program output and exit codes are Nagios/Icinga [compatible](https://nagios-plugins.org/doc/guidelines.html).
+Program output and exit codes are Nagios/Icinga [compatible](https://nagios-plugins.org/doc/guidelines.html). Response time from DHCP server is measured and returned as performance data.
+
+## Requirements
+
+dhcpdoctor needs needs Python 3.4 or later to run.
+
+Since it uses [scapy](https://scapy.net/) under the hood to craft, dissect, send and receive packets, it needs root permissions to run.
+
+## Installing
+
+Via pip:
+
+```
+pip install dhcpdoctor
+```
+
+## Developing
+
+We use [poetry](https://poetry.eustace.io/) to manage Python dependencies and virtual environments.
