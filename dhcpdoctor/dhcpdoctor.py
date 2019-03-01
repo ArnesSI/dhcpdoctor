@@ -2,6 +2,7 @@ import argparse
 import binascii
 import sys
 import threading
+import time
 from random import randint
 
 from scapy.all import (
@@ -344,14 +345,20 @@ def run_test():
 
     dhcp_client.craft_request(hw=settings.CLIENT_ID)
     dhcp_client.sniff_start()
+    ts = time.time()
     dhcp_client.send()
     dhcp_client.sniff_stop()
+    te = time.time()
 
     if dhcp_client.reply:
-        print('OK: got reply with address {}'.format(dhcp_client.offered_address))
+        print(
+            'OK: got reply with address {} | response_time={:0.3f}s'.format(
+                dhcp_client.offered_address, te - ts
+            )
+        )
         sys.exit(OK)
     else:
-        print('CRITICAL: no reply received')
+        print('CRITICAL: no reply received | response_time=U')
         sys.exit(CRITICAL)
 
 
@@ -421,7 +428,9 @@ def parse_cmd_args():
     args = parser.parse_args()
     # argument validation
     if args.RELAY_ADDRESS and not args.SERVER_ADDRESS:
-        parser.error('The --relay-from [-f] argument can only be used with --relay [-r] argument.')
+        parser.error(
+            'The --relay-from [-f] argument can only be used with --relay [-r] argument.'
+        )
     settings.DEBUG = args.DEBUG
     settings.IFACE = args.IFACE
     settings.CLIENT_ID = args.CLIENT_ID
