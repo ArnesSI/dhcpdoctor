@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "dhcpdoctor"
+version = "0.1.0"
+description = "Tool for testing IPv4 and IPv6 DHCP services"
+readme = "README.md"
+authors = ["Matej Vadnjal <matej.vadnjal@arnes.si>"]
+license = "MIT"
+repository = "https://github.com/ArnesSI/dhcpdoctor"
+classifiers = [
+    "Topic :: System :: Monitoring"
+]
+
+[tool.poetry.scripts]
+dhcpdoctor = 'dhcpdoctor.dhcpdoctor:main'
+
+[tool.poetry.dependencies]
+python = "^3.4"
+scapy = "^2.4"
+
+[tool.poetry.dev-dependencies]
+pyinstaller = "*"
+bumpversion = "*"
+black = {version = "*", python = "^3.6", allows-prereleases = true}
+flake8 = "*"
+coverage = "^4.5"
+pydocstyle = "^3.0"
+
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+py36 = true
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
