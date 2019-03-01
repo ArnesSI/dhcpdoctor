@@ -2,6 +2,8 @@
 
 Tool for testing IPv4 and IPv6 DHCP services
 
+![Logo](logo.png)
+
 ## Description
 
 dhcpdoctor sends DHCP requests and checks if it gets an offer from DHCP server.
@@ -21,3 +23,4 @@ of the interface to send request from is used.
 
 You can specify the interface to send requests from with `-i`.
 
+Program output and exit codes are Nagios/Icinga [compatible](https://nagios-plugins.org/doc/guidelines.html).
