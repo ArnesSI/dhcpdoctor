@@ -37,6 +37,11 @@ from dhcpdoctor import settings
 
 __version__ = '0.1.0'
 
+OK = 0
+WARNING = 1
+CRITICAL = 2
+UNKNOWN = 3
+
 
 def mac_str_to_bytes(mac):
     """Converts string representation of a MAC address to bytes
@@ -343,11 +348,11 @@ def run_test():
     dhcp_client.sniff_stop()
 
     if dhcp_client.reply:
-        print('got reply with address {}'.format(dhcp_client.offered_address))
-        sys.exit(0)
+        print('OK: got reply with address {}'.format(dhcp_client.offered_address))
+        sys.exit(OK)
     else:
-        print('NO REPLY FOUND!!!')
-        sys.exit(2)
+        print('CRITICAL: no reply received')
+        sys.exit(CRITICAL)
 
 
 def parse_cmd_args():
