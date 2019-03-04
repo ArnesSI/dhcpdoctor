@@ -1,3 +1,22 @@
+#
+# Vagrant environment with 3 machines:
+#  * dhcpd4 - ISC dhcp ipv4 server
+#  * dhcpd6 - ISC dhcp ipv6 server
+#  * dhcpdoctor - runs dhcpdoctor against eny of the servers
+#
+# All three are connected to a caommon private network
+# IP provisioning is done mostly via shell provisioner, because
+# built-in vagrant options are too limited.
+# dhcpdoctor has an extra IPv4 and IPv6 subnet so it can sumulate
+# running as DHCP relay and still receive replies.
+#
+# Included centos boxes don't have virtualbox tools installed, so the
+# working directory can't be mounted and is instead rsync-ed to VMs.
+# To keep the code up to date while developing you sould run rsync-auto
+# in a separate shell:
+#
+#     vagrant rsync-auto
+#
 Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |v|
     v.gui = false
@@ -28,10 +47,11 @@ Vagrant.configure("2") do |config|
       sudo ip link set eth1 promisc on
       sudo systemctl start dhcpd6
     SHELL
-    dhcpd6.vm.provider "virtualbox" do |v|
-      v.customize ["modifyvm", :id, "--nictrace2", "on"]
-      v.customize ["modifyvm", :id, "--nictracefile2", "dhcp.pcap"]
-    end
+    # uncomment to have virtualbox capture packets before they reach the VM
+    #dhcpd6.vm.provider "virtualbox" do |v|
+    #  v.customize ["modifyvm", :id, "--nictrace2", "on"]
+    #  v.customize ["modifyvm", :id, "--nictracefile2", "dhcp.pcap"]
+    #end
   end
 
   config.vm.define "dhcpdoctor" do |dhcpdoctor|
