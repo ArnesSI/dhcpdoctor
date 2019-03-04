@@ -36,7 +36,7 @@ from scapy.all import (
 
 from dhcpdoctor import settings
 
-__version__ = '0.1.0'
+__version__ = '1.0.0'
 
 OK = 0
 WARNING = 1

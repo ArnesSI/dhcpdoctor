@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dhcpdoctor"
-version = "0.1.0"
+version = "1.0.0"
 description = "Tool for testing IPv4 and IPv6 DHCP services"
 readme = "README.md"
 authors = ["Matej Vadnjal <matej.vadnjal@arnes.si>"]
