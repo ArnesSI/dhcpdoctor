@@ -53,7 +53,7 @@ apply Service "dhcpd6" {
     check_command = "dhcpdoctor"
     vars.dhcpdoctor_ipv6 = true
     vars.dhcpdoctor_client_id = "00:11:11:11:11:11"
-    assign where host.dhcpd6
+    assign where host.vars.dhcpd6
 }
 ```
 
