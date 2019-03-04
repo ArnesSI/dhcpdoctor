@@ -1,5 +1,6 @@
 %global srcname dhcpdoctor
 %define version _VERSION_
+%define icingadest /etc/icinga2/conf.d/check_commands
 
 Name: dhcpdoctor
 Version: %{version}
@@ -8,6 +9,7 @@ Summary: Tool for testing IPv4 and IPv6 DHCP services
 License: MIT
 URL: https://github.com/ArnesSI/dhcpdoctor
 Source0: dist/%{srcname}-%{version}.tar.gz
+Source1: dhcpdoctor.conf
 
 BuildRequires: python34-devel
 BuildRequires: python34-pip
@@ -28,7 +30,9 @@ pyinstaller --onefile dhcpdoctor/dhcpdoctor.py -n dhcpdoctor
 
 %install
 install -p -D -m 4755 dist/dhcpdoctor %{buildroot}%{_bindir}/dhcpdoctor
+install -p -D -m 0644 %_sourcedir/dhcpdoctor.conf  %{buildroot}%{icingadest}/dhcpdoctor.conf
 
 %files
 %defattr(-,root,root,-)
 %{_bindir}/dhcpdoctor
+%{icingadest}/dhcpdoctor.conf

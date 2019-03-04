@@ -39,6 +39,28 @@ Via pip:
 pip install dhcpdoctor
 ```
 
+## Icinga2 check command
+
+You can use dhcpdoctor as a check command from Icinga2 or Nagios.
+
+There is [dhcpdoctor.conf](dhcpdoctor.conf) config with a CheckCommand definition
+for Icinga2 you can use. A service that uses this check command might look like
+this:
+
+```
+apply Service "dhcpd6" {
+    import "generic-service"
+    check_command = "dhcpdoctor"
+    vars.dhcpdoctor_ipv6 = true
+    vars.dhcpdoctor_client_id = "00:11:11:11:11:11"
+    assign where host.dhcpd6
+}
+```
+
+If you are building an RPM from provided [SPEC](dhcpdoctor.spec) file, the
+CheckCommand config will be installed to
+`/etc/icinga2/conf.d/check_commands/dhcpdoctor.conf`.
+
 ## Developing
 
 We use [poetry](https://poetry.eustace.io/) to manage Python dependencies and virtual environments.
