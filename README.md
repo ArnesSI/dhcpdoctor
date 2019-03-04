@@ -103,6 +103,13 @@ This creates a commit and tag. Make sure to push it with `git push --tags`.
 The `dev-version.sh` script will bump the version for development or release as
 needed (based on whether we are on a git tag or not) and is called in CI jobs.
 
+To publish a release to pypi.org run:
+
+```
+poetry build
+poetry publish
+```
+
 ## Building
 
 Here is how to build `dhcpdoctor` using pyinstaller into a single binary file
