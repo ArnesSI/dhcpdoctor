@@ -41,10 +41,17 @@ pip install dhcpdoctor
 
 ## Developing
 
-We use [poetry](https://poetry.eustace.io/) to manage Python dependencies and virtual environments:
+We use [poetry](https://poetry.eustace.io/) to manage Python dependencies and virtual environments.
+
+To setup development virtual environment:
 
 ```
 poetry install
+```
+
+Run the tool:
+
+```
 poetry run dhcpdoctor -h
 ```
 
@@ -61,3 +68,31 @@ vagrant destroy
 ```
 
 See comments in [Vagrantfile](Vagrantfile) for more information.
+
+## Releases
+
+```
+poetry run bumpversion patch
+```
+
+Instead of patch you can give `minor` or `major`.
+This creates a commit and tag. Make sure to push it with `git push --tags`.
+
+The `dev-version.sh` script will bump the version for development or release as
+needed (based on whether we are on a git tag or not) and is called in CI jobs.
+
+## Building
+
+Here is how to build `dhcpdoctor` using pyinstaller into a single binary file
+and then package that into a RPM for Red-Hat based systems. The resulting
+binary is setuid root, because `dhcpdoctor` needs to work on privileged UDP
+ports, but is usually run as a special user when invoked from Nagios or Icinga.
+
+```
+pip3 install --upgrade bumpversion poetry pyinstaller
+poetry install --no-dev
+poetry run pip freeze | grep -v egg=dhcpdoctor > requirements.txt
+pip3 install -r requirements.txt
+./dev-version.sh
+./build.sh
+```
